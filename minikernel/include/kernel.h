@@ -88,6 +88,16 @@ typedef struct{
 
 /*
  *
+ * Definici�n del tipo que corresponde con la entrada para la función tiempos_proceso().
+ *
+ */
+struct tiempos_ejec {
+    int usuario;
+    int sistema;
+};
+
+/*
+ *
  * Variable global empleada para gestionar el número de ticks pasados
  * y de este modo gestionar con ella esperas.
  * 
@@ -102,6 +112,7 @@ int sis_terminar_proceso();
 int sis_escribir();
 int obtener_id_pr();
 int dormir();
+int tiempos_proceso();
 
 /*
  * Variable global que contiene las rutinas que realizan cada llamada
@@ -110,7 +121,8 @@ servicio tabla_servicios[NSERVICIOS]={	{sis_crear_proceso},
 					{sis_terminar_proceso},
 					{sis_escribir},
 					{obtener_id_pr},
-					{dormir}};
+					{dormir},
+					{tiempos_proceso}};
 
 #endif /* _KERNEL_H */
 

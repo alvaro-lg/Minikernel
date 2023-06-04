@@ -48,6 +48,10 @@ int obtener_id_pr(){
    return llamsis(OBTENER_ID_PR, 0);
 }
 
-int dormir( unsigned int segundos){
+int dormir(unsigned int segundos){
    return llamsis(DORMIR, 1, (long)segundos);
 }
+
+/*int tiempos_proceso(struct tiempos_ejec *t_ejec){
+   return llamsis(TIEMPOS_PROCESO, 1, t_ejec);
+}*/

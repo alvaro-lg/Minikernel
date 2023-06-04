@@ -207,7 +207,7 @@ static void int_terminal(){
 static void int_reloj(){
 
 	// Variables
-	BCP* p = lista_dormidos.primero;
+	BCPptr p = lista_dormidos.primero, p_next;
 	unsigned int n_int;
 
 	printk("-> TRATANDO INT. DE RELOJ\n");
@@ -217,6 +217,9 @@ static void int_reloj(){
 
 	// Tratando procesos esperando
 	while (p != NULL) {
+
+		// Reservamos el valor del siguiente
+		p_next = p->siguiente;
 
 		// Si se cumple el plazo, desbloqueamos el proceso
 		if (p->t_wake <= t_ticks) {
@@ -237,7 +240,7 @@ static void int_reloj(){
 		}
 
 		// Avanzamos el puntero
-		p = p->siguiente;
+		p = p_next;
 	}
 }
 
@@ -358,14 +361,14 @@ int sis_terminar_proceso(){
 }
 
 /*
- * Función que implementa la primera funcionalidad a desarrollar (obtener ID)
+ * Función que implementa la primera funcionalidad a desarrollar (obtener ID).
  */
 int obtener_id_pr() {
 	return p_proc_actual->id;
 }
 
 /*
- * Función que implementa la segunda funcionalidad a desarrollar (dormir)
+ * Función que implementa la segunda funcionalidad a desarrollar (dormir).
  */
 int dormir() {
 
@@ -399,6 +402,19 @@ int dormir() {
 	
 	// Cambio de contexto
 	cambio_contexto(&(old_p->contexto_regs), &(p_proc_actual->contexto_regs));
+
+	return 0;
+}
+
+/*
+ * Función que implementa la tercera funcionalidad a desarrollar 
+ * (contabilidad de uso del procesador).
+ */
+int tiempos_proceso() {
+
+	// Leer parámetros
+
+	// ...
 
 	return 0;
 }
