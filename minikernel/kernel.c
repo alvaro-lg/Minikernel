@@ -105,7 +105,7 @@ static void eliminar_elem(lista_BCPs *lista, BCP * proc){
 static void espera_int(){
 	int nivel;
 
-	printk("-> NO HAY LISTOS. ESPERA INT\n");
+	printk("[%f] \tNO HAY LISTOS. ESPERA INT\n", (float) t_ticks/TICK);
 
 	/* Baja al m�nimo el nivel de interrupci�n mientras espera */
 	nivel=fijar_nivel_int(NIVEL_1);
@@ -140,8 +140,9 @@ static void liberar_proceso(){
 	p_proc_anterior=p_proc_actual;
 	p_proc_actual=planificador();
 
-	printk("-> C.CONTEXTO POR FIN: de %d a %d\n",
-			p_proc_anterior->id, p_proc_actual->id);
+	
+	printk("[%f] \tC.CONTEXTO POR FIN: de %d a %d\n",
+			(float) t_ticks/TICK, p_proc_anterior->id, p_proc_actual->id);
 
 	liberar_pila(p_proc_anterior->pila);
 	cambio_contexto(NULL, &(p_proc_actual->contexto_regs));
@@ -168,7 +169,7 @@ static void exc_arit(){
 		panico("excepcion aritmetica cuando estaba dentro del kernel");
 
 
-	printk("-> EXCEPCION ARITMETICA EN PROC %d\n", p_proc_actual->id);
+	printk("[%f] \tEXCEPCION ARITMETICA EN PROC %d\n", (float) t_ticks/TICK, p_proc_actual->id);
 	liberar_proceso();
 
         return; /* no deber�a llegar aqui */
@@ -183,7 +184,7 @@ static void exc_mem(){
 		panico("excepcion de memoria cuando estaba dentro del kernel");
 
 
-	printk("-> EXCEPCION DE MEMORIA EN PROC %d\n", p_proc_actual->id);
+	printk("[%f] \tEXCEPCION DE MEMORIA EN PROC %d\n", (float) t_ticks/TICK, p_proc_actual->id);
 	liberar_proceso();
 
         return; /* no deber�a llegar aqui */
@@ -196,7 +197,7 @@ static void int_terminal(){
 	char car;
 
 	car = leer_puerto(DIR_TERMINAL);
-	printk("-> TRATANDO INT. DE TERMINAL %c\n", car);
+	printk("[%f] \tTRATANDO INT. DE TERMINAL %c\n", (float) t_ticks/TICK, car);
 
         return;
 }
@@ -210,10 +211,16 @@ static void int_reloj(){
 	BCPptr p = lista_dormidos.primero, p_next;
 	unsigned int n_int;
 
-	printk("-> TRATANDO INT. DE RELOJ\n");
+	printk("[%f] \tTRATANDO INT. DE RELOJ\n", (float) t_ticks/TICK);
 
 	// Incrementamos el numero de ticks actuales
-	t_ticks += TICK;
+	t_ticks += 1;
+
+	if (viene_de_modo_usuario()) {
+		t_usr += 1;
+	} else {
+		t_sys += 1;
+	}
 
 	// Tratando procesos esperando
 	while (p != NULL) {
@@ -223,7 +230,7 @@ static void int_reloj(){
 
 		// Si se cumple el plazo, desbloqueamos el proceso
 		if (p->t_wake <= t_ticks) {
-			printk("-> PROCESO %d LISTO\n", p->id);
+			printk("[%f] \tPROCESO %d LISTO\n", (float) t_ticks/TICK, p->id);
 
 			// Cambiamos su estado
 			p->estado = LISTO;
@@ -264,7 +271,7 @@ static void tratar_llamsis(){
  */
 static void int_sw(){
 
-	printk("-> TRATANDO INT. SW\n");
+	printk("[%f] \tTRATANDO INT. SW\n", (float) t_ticks/TICK);
 
 	return;
 }
@@ -325,7 +332,7 @@ int sis_crear_proceso(){
 	char *prog;
 	int res;
 
-	printk("-> PROC %d: CREAR PROCESO\n", p_proc_actual->id);
+	printk("[%f] \tPROC %d: CREAR PROCESO\n", (float) t_ticks/TICK, p_proc_actual->id);
 	prog=(char *)leer_registro(1);
 	res=crear_tarea(prog);
 	return res;
@@ -353,7 +360,7 @@ int sis_escribir()
  */
 int sis_terminar_proceso(){
 
-	printk("-> FIN PROCESO %d\n", p_proc_actual->id);
+	printk("[%f] \tFIN PROCESO %d\n", (float) t_ticks/TICK, p_proc_actual->id);
 
 	liberar_proceso();
 
@@ -363,20 +370,20 @@ int sis_terminar_proceso(){
 /*
  * Función que implementa la primera funcionalidad a desarrollar (obtener ID).
  */
-int obtener_id_pr() {
+int sis_obtener_id_pr() {
 	return p_proc_actual->id;
 }
 
 /*
  * Función que implementa la segunda funcionalidad a desarrollar (dormir).
  */
-int dormir() {
+int sis_dormir() {
 
 	// Variables
 	BCP* old_p;
 	unsigned int segundos, n_int;
 
-	// Lectura de argumento
+	// Lectura de argumentos
 	segundos=(unsigned int)leer_registro(1);
 
 	// Bloquear proceso
@@ -389,7 +396,7 @@ int dormir() {
 	// Modificar listas de BCPs
 	eliminar_elem(&lista_listos,p_proc_actual);
 	insertar_ultimo(&lista_dormidos,p_proc_actual);
-	printk("-> PROCESO %d DORMIDO\n", p_proc_actual->id);
+	printk("[%f] \tPROCESO %d DORMIDO\n", (float) t_ticks/TICK, p_proc_actual->id);
 
 	// Deshinibir interrupciones
 	fijar_nivel_int(n_int);
@@ -398,7 +405,8 @@ int dormir() {
 	old_p = p_proc_actual;
 	p_proc_actual= planificador();
 
-	printk("-> C.CONTEXTO: de %d a %d\n", old_p->id, p_proc_actual->id);
+
+	printk("[%f] \tC.CONTEXTO: de %d a %d\n", (float) t_ticks/TICK, old_p->id, p_proc_actual->id);
 	
 	// Cambio de contexto
 	cambio_contexto(&(old_p->contexto_regs), &(p_proc_actual->contexto_regs));
@@ -410,13 +418,22 @@ int dormir() {
  * Función que implementa la tercera funcionalidad a desarrollar 
  * (contabilidad de uso del procesador).
  */
-int tiempos_proceso() {
+int sis_tiempos_proceso() {
 
-	// Leer parámetros
+	// Variables
+	struct tiempos_ejec* tiempos;
 
-	// ...
+	// Lectura de argumentos
+	tiempos=(struct tiempos_ejec *)leer_registro(1);
 
-	return 0;
+	// Gestionando argumentos erroneos
+	if (tiempos!=NULL) {
+		tiempos->sistema=t_sys;
+		tiempos->usuario=t_usr;
+	}
+
+	// Returning elapsed ticks
+	return t_ticks;
 }
 
 /*

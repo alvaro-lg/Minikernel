@@ -22,6 +22,17 @@
 /* Evita el uso del printf de la bilioteca est�ndar */
 #define printf escribirf
 
+/*
+ *
+ * Definici�n del tipo que corresponde con la entrada para la función tiempos_proceso().
+ *
+ */
+struct tiempos_ejec {
+    int usuario;
+    int sistema;
+};
+
+
 /* Funcion de biblioteca */
 int escribirf(const char *formato, ...);
 
@@ -31,7 +42,7 @@ int terminar_proceso();
 int escribir(char *texto, unsigned int longi);
 int obtener_id_pr();
 int dormir(unsigned int segundos);
-//int tiempos_proceso(struct tiempos_ejec *t_ejec);
+int tiempos_proceso(struct tiempos_ejec *t_ejec);
 
 #endif /* SERVICIOS_H */
 

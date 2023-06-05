@@ -98,11 +98,11 @@ struct tiempos_ejec {
 
 /*
  *
- * Variable global empleada para gestionar el número de ticks pasados
- * y de este modo gestionar con ella esperas.
+ * Variables globales empleadas para gestionar el número de ticks pasados
+ * en total, en modo usuario y en modo sistema
  * 
  */
-unsigned long long int t_ticks = 0;
+unsigned long long int t_ticks = 0, t_sys=0, t_usr=0;
 
 /*
  * Prototipos de las rutinas que realizan cada llamada al sistema
@@ -110,9 +110,9 @@ unsigned long long int t_ticks = 0;
 int sis_crear_proceso();
 int sis_terminar_proceso();
 int sis_escribir();
-int obtener_id_pr();
-int dormir();
-int tiempos_proceso();
+int sis_obtener_id_pr();
+int sis_dormir();
+int sis_tiempos_proceso();
 
 /*
  * Variable global que contiene las rutinas que realizan cada llamada
@@ -120,9 +120,9 @@ int tiempos_proceso();
 servicio tabla_servicios[NSERVICIOS]={	{sis_crear_proceso},
 					{sis_terminar_proceso},
 					{sis_escribir},
-					{obtener_id_pr},
-					{dormir},
-					{tiempos_proceso}};
+					{sis_obtener_id_pr},
+					{sis_dormir},
+					{sis_tiempos_proceso}};
 
 #endif /* _KERNEL_H */
 
