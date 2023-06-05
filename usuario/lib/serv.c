@@ -43,15 +43,27 @@ int terminar_proceso(){
 int escribir(char *texto, unsigned int longi){
 	return llamsis(ESCRIBIR, 2, (long)texto, (long)longi);
 }
-
 int obtener_id_pr(){
    return llamsis(OBTENER_ID_PR, 0);
 }
-
 int dormir(unsigned int segundos){
    return llamsis(DORMIR, 1, (long)segundos);
 }
-
 int tiempos_proceso(struct tiempos_ejec *t_ejec){
    return llamsis(TIEMPOS_PROCESO, 1, t_ejec);
+}
+int crear_mutex(char *nombre, int tipo){
+   return llamsis(CREAR_MUTEX, 2, nombre, tipo);
+}
+int abrir_mutex(char *nombre){
+   return llamsis(ABRIR_MUTEX, 1, nombre);
+}
+int lock(unsigned int mutexid){
+   return llamsis(LOCK, 1, mutexid);
+}
+int unlock(unsigned int mutexid){
+   return llamsis(UNLOCK, 1, mutexid);
+}
+int cerrar_mutex(unsigned int mutexid){
+   return llamsis(CERRAR_MUTEX, 1, mutexid);
 }

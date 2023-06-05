@@ -37,8 +37,20 @@ typedef struct BCP_t {
         void * pila;		/* dir. inicial de la pila */
 	BCPptr siguiente;		/* puntero a otro BCP */
 	void *info_mem;			/* descriptor del mapa de memoria */
-	unsigned int t_wake;	/* tiempo (ticks) en que el proceso se desèrtara*/
+	unsigned int t_wake;	/* tiempo (ticks) en que el proceso se despertara */
 } BCP;
+
+/*
+ * Definición del tipo correspondiente con el mutex;
+ */
+typedef struct mutex_t *mutexptr;
+
+typedef struct mutex_t {
+	int p_id;					/* ident. del proceso que lo esta usando */
+	int estado; 				/* MTX_NO_USADO|MTX_BLOQUEADO|MTX_DESBLOQUEADO */
+	int tipo;					/* NO_RECURSIVO|RECURSIVO */
+	char* nombre;				/* nombre asociado al mutex */
+} mutex;
 
 /*
  *
@@ -53,7 +65,6 @@ typedef struct{
 	BCP *ultimo;
 } lista_BCPs;
 
-
 /*
  * Variable global que identifica el proceso actual
  */
@@ -67,6 +78,12 @@ BCP * p_proc_actual=NULL;
 BCP tabla_procs[MAX_PROC];
 
 /*
+ * Variable global que representa la tabla de mutex
+ */
+
+mutex tabla_mutex[NUM_MUT];
+
+/*
  * Variable global que representa la cola de procesos listos
  */
 lista_BCPs lista_listos= {NULL, NULL};
@@ -75,6 +92,11 @@ lista_BCPs lista_listos= {NULL, NULL};
  * Variable global que representa la cola de procesos dormidos
  */
 lista_BCPs lista_dormidos= {NULL, NULL};
+
+/*
+ * Variable global que representa la cola de procesos bloqueados por un mutex
+ */
+lista_BCPs lista_bloqueados= {NULL, NULL};
 
 /*
  *
@@ -113,6 +135,11 @@ int sis_escribir();
 int sis_obtener_id_pr();
 int sis_dormir();
 int sis_tiempos_proceso();
+int sis_crear_mutex();
+int sis_abrir_mutex();
+int sis_lock();
+int sis_unlock();
+int sis_cerrar_mutex();
 
 /*
  * Variable global que contiene las rutinas que realizan cada llamada
@@ -122,7 +149,12 @@ servicio tabla_servicios[NSERVICIOS]={	{sis_crear_proceso},
 					{sis_escribir},
 					{sis_obtener_id_pr},
 					{sis_dormir},
-					{sis_tiempos_proceso}};
+					{sis_tiempos_proceso},
+					{sis_crear_mutex},
+					{sis_abrir_mutex},
+					{sis_lock},
+					{sis_unlock},
+					{sis_cerrar_mutex}};
 
 #endif /* _KERNEL_H */
 
