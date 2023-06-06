@@ -31,13 +31,14 @@
 typedef struct BCP_t *BCPptr;
 
 typedef struct BCP_t {
-        int id;				/* ident. del proceso */
-        int estado;			/* TERMINADO|LISTO|EJECUCION|BLOQUEADO */
+        int id;						/* ident. del proceso */
+        int estado;					/* TERMINADO|LISTO|EJECUCION|BLOQUEADO */
         contexto_t contexto_regs;	/* copia de regs. de UCP */
-        void * pila;		/* dir. inicial de la pila */
-	BCPptr siguiente;		/* puntero a otro BCP */
-	void *info_mem;			/* descriptor del mapa de memoria */
-	unsigned int t_wake;	/* tiempo (ticks) en que el proceso se despertara */
+        void * pila;				/* dir. inicial de la pila */
+	BCPptr siguiente;				/* puntero a otro BCP */
+	void *info_mem;					/* descriptor del mapa de memoria */
+	unsigned int t_wake;			/* tiempo (ticks) en que el proceso se despertara */
+	int mutex_ids[NUM_MUT_PROC];	/* descriptores e los mutex que posee el proceso */
 } BCP;
 
 /*

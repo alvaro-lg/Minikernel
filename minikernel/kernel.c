@@ -29,7 +29,10 @@ static void iniciar_tabla_proc(){
 	int i;
 
 	for (i=0; i<MAX_PROC; i++) 
-		tabla_procs[i].estado=NO_USADA;
+		tabla_procs[i] = (BCP) {
+			.estado=NO_USADA,
+			.mutex_ids = {[0 ... NUM_MUT_PROC-1] = MTX_DESC_NO_USADO}
+		};
 }
 
 /*
@@ -460,17 +463,17 @@ int sis_tiempos_proceso() {
 }
 
 /*
- * Cuenta cuántos mutex tiene asignados un proceso cuyo id 
- * se pasa como argumento.
+ * Cuenta cuántos descriptores de mutex tiene el proceso actual
  */
-int num_mutex_p(int p_id) {
+int num_mutex_p() {
 
 	// Variables
 	int i, n = 0;
 
-	// Recorremos la tabla de mutex
-	for (i = 0; i < NUM_MUT; i++)
-		if (tabla_mutex[i].p_id == p_id) n++;
+	// Recorremos los descriptores de mutex asociados al proceso
+	for (i = 0; i < NUM_MUT_PROC; i++)
+		if (p_proc_actual->mutex_ids[i] != MTX_DESC_NO_USADO)
+			n++;
 
 	// Devolvemos el numero total
 	return n;
@@ -494,6 +497,44 @@ int get_avail_mutex() {
 }
 
 /*
+ * Devuelve el índice del primer hueco en la tabla de 
+ * descriptores de mutex asociados al proceso, -1 en caso
+ * de que no haya.
+ */
+int get_avail_mutex_desc() {
+
+	// Variables
+	int i;
+
+	// Recorremos los descriptores de mutex asociados al proceso
+	for (i = 0; i < NUM_MUT_PROC; i++)
+		if (p_proc_actual->mutex_ids[i] == MTX_DESC_NO_USADO)
+			return i;
+
+	// Error
+	return -1;
+}
+
+/*
+ * Devuelve el índice en el que se almacena el valor del 
+ * descriptor de mutex asociados al proceso que se pasa como argumento, 
+ * -1 en caso de que no se ecuentre.
+ */
+int get_idx_mutex_desc(int id) {
+
+	// Variables
+	int i;
+
+	// Recorremos los descriptores de mutex asociados al proceso
+	for (i = 0; i < NUM_MUT_PROC; i++)
+		if (p_proc_actual->mutex_ids[i] == id)
+			return i;
+
+	// Error
+	return -1;
+}
+
+/*
  * Función que implementa la operación de crear un mutex de 
  * la cuarta funcionalidad a desarrollar (mutex).
  */
@@ -510,33 +551,34 @@ int sis_crear_mutex(){
 	tipo=(int)leer_registro(2);
 
 	// Comprobar que el proceso puede tener mutex asignados
-	if (num_mutex_p(sis_obtener_id_pr()) > NUM_MUT_PROC)
+	if (num_mutex_p() >= NUM_MUT_PROC) {
+		printk("[%f] \tPROCESO %d POSEE EL MAXIMO DE DESCRIPTORES\n", (float) t_ticks/TICK, p_proc_actual->id);
 		return -1;
+	}
 	
 	// Comprobar longitud del nombre
 	while (nombre[len] != '\0') len++;
-	if (len+1 > MAX_NOM_MUT)
+	if (len+1 > MAX_NOM_MUT) {
+		printk("[%f] \tNOMBRBE DEL MUTEX DEMASIADO LARGO\n", (float) t_ticks/TICK);
 		return -1;
+	}
 
 	// Comprobar que no haya otro nombre igual
 	for (i = 0; i < NUM_MUT; i++){
 		if (tabla_mutex[i].estado != MTX_NO_USADO){
 			for (j = 0; j <= len; j++){
 
-				printk("%c %c\n", tabla_mutex[i].nombre[j], nombre[j]);
-
 				// Si son distintos
 				if (nombre[j] != tabla_mutex[i].nombre[j] ||
 					tabla_mutex[i].nombre[j] == '\0')
 					break;
 
-				printk("%d %d\n", i,j);
-
-				// Si son iguales
-				if (nombre[j] == tabla_mutex[i].nombre[j] && 
-					nombre[j] == '\0'){
-					return -1;
-				}
+			}
+			// Si son iguales
+			if (nombre[j] == tabla_mutex[i].nombre[j] && 
+				nombre[j] == '\0'){
+				printk("[%f] \tYA EXISTE UN MUTEX LLAMADO %s\n", (float) t_ticks/TICK, nombre);
+				return -1;
 			}
 		}
 	}
@@ -573,12 +615,14 @@ int sis_crear_mutex(){
 
 	// Inicializacion del mutex
 	m = &tabla_mutex[i];
-	m->p_id = sis_obtener_id_pr();
-	m->estado = MTX_BLOQUEADO;
+	m->estado = MTX_DESBLOQUEADO;
 	m->tipo = tipo;
 	m->nombre = nombre;
 
-	printk("[%f] \tPROCESO %d CREA Y TOMA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, i, m->nombre);
+	// Asociando el descriptor al proceso
+	p_proc_actual->mutex_ids[get_avail_mutex_desc()] = i;
+
+	printk("[%f] \tPROCESO %d CREA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, i, m->nombre);
 
 	// Devolver descriptor
 	return i;
@@ -597,6 +641,12 @@ int sis_abrir_mutex(){
 	// Lectura de argumentos
 	nombre=(char*)leer_registro(1);
 
+	// Comprobar que el proceso puede tener mutex asignados
+	if (num_mutex_p() >= NUM_MUT_PROC) {
+		printk("[%f] \tPROCESO %d POSEE EL MAXIMO DE DESCRIPTORES\n", (float) t_ticks/TICK, p_proc_actual->id);
+		return -1;
+	}
+
 	// Buscar otro con igual nombre
 	for (i = 0; i < NUM_MUT; i++){
 		for (j = 0; j < MAX_NOM_MUT; j++){
@@ -606,17 +656,21 @@ int sis_abrir_mutex(){
 				tabla_mutex[i].nombre[j] == '\0' ||
 				nombre[j] == '\0')
 				break;
-
-			// Si son iguales
-			if (nombre[j] == tabla_mutex[i].nombre[j] && 
-				nombre[j] == '\0') {
-				printk("[%f] \tPROCESO %d ABRE EL MUTEX %d (%s)\n", (float) t_ticks/TICK, sis_obtener_id_pr(), i, tabla_mutex[i]);
-				return i;
-			}	
 		}
+		// Si son iguales
+		if (tabla_mutex[i].nombre[j] == '\0' && 
+			nombre[j] == '\0') {
+
+			// Asociando el descriptor al proceso
+			p_proc_actual->mutex_ids[get_avail_mutex_desc()] = i;
+			
+			printk("[%f] \tPROCESO %d ABRE EL MUTEX %d (%s)\n", (float) t_ticks/TICK, sis_obtener_id_pr(), i, tabla_mutex[i].nombre);
+			return i;
+		}	
 	}
 
 	// Error
+	printk("[%f] \tNO EXISTE EL MUTEX %s\n", (float) t_ticks/TICK, nombre);
 	return -1;
 }
 
@@ -634,12 +688,17 @@ int sis_lock(){
 	id=(int)leer_registro(1);
 
 	// Caso de que el mutex no se haya creado
-	if (tabla_mutex[id].estado == MTX_NO_USADO)
+	if (tabla_mutex[id].estado == MTX_NO_USADO) {
+		printk("[%f] \tMUTEX %d NO CREADO\n", (float) t_ticks/TICK, id);
 		return -1;
+	}
 
 	// Caso de que el mutex sea no recursivo y lo quiera bloquear el dueño
-	if (tabla_mutex[id].tipo == NO_RECURSIVO && tabla_mutex[id].p_id == sis_obtener_id_pr())
+	if (tabla_mutex[id].tipo == NO_RECURSIVO && tabla_mutex[id].p_id == sis_obtener_id_pr()) {
+		printk("[%f] \tPROCESO %d INTENTA TOMAR EL MUTEX RECURSIVO %d (%s)\n", 
+			(float) t_ticks/TICK, sis_obtener_id_pr(), id, tabla_mutex[id].nombre);
 		return -1;
+	}
 
 	// Se intenta bloquear si no es recursivo y lo quiere bloquear el dueño
 	if (!(tabla_mutex[id].tipo == RECURSIVO && tabla_mutex[id].p_id == sis_obtener_id_pr()))
@@ -691,11 +750,16 @@ int sis_unlock(){
 
 	// Comprobar que es dueño del mutex
 	if (sis_obtener_id_pr() != tabla_mutex[id].p_id) {
+		printk("[%f] \tPROCESO %d INTENTA LIBERAR EL MUTEX %d (%s) PERO NO LO POSEE (LO POSEE %d)\n", 
+			(float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre, tabla_mutex[id].p_id);
 		return -1;
 	}
 
 	// Se libera el mutex
 	tabla_mutex[id].estado = MTX_DESBLOQUEADO;
+
+	// Desasociando el descriptor al proceso
+	p_proc_actual->mutex_ids[get_idx_mutex_desc(id)] = MTX_DESC_NO_USADO;
 
 	printk("[%f] \tPROCESO %d LIBERA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
 
@@ -714,15 +778,20 @@ int sis_cerrar_mutex(){
 	// Lectura de argumentos
 	id=(int)leer_registro(1);
 
-	// Comprobar que es dueño del mutex
-	if (sis_obtener_id_pr() != tabla_mutex[id].p_id) {
+	// Comprobar que el mutex no esta tomado o es el dueño
+	if (tabla_mutex[id].estado == MTX_BLOQUEADO && sis_obtener_id_pr() != tabla_mutex[id].p_id) {
+		printk("[%f] \tPROCESO %d INTENTA CERRAR EL MUTEX %d (%s) PERO ESTA TOMADO POR %d\n", 
+			(float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre, tabla_mutex[id].p_id);
 		return -1;
 	}
 
 	// Se libera el mutex
 	tabla_mutex[id].estado = MTX_NO_USADO;
 
-	printk("[%f] \tPROCESO %d DESTRUYE EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
+	// Desasociando el descriptor del proceso
+	p_proc_actual->mutex_ids[get_idx_mutex_desc(id)] = MTX_DESC_NO_USADO;
+
+	printk("[%f] \tPROCESO %d CIERRA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
 
 	return 0;
 }

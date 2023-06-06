@@ -51,6 +51,8 @@
 #define MTX_BLOQUEADO 1	
 #define MTX_DESBLOQUEADO 2
 
+#define MTX_DESC_NO_USADO -1	/* Entrada de la lista de descriptores asociados a un proceso no usada */
+
 /*
  *
  *  Definicion de constantes relacionadas con vectores de interrupcion
