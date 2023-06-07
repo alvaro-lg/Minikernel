@@ -31,6 +31,18 @@
 
 #define MTX_DESC_NO_USADO -1	/* Entrada de la lista de descriptores asociados a un proceso no usada */
 
+/*
+ * Errores asociados a un mutex
+ */
+#define MUTEX_NAME_EXIST -1
+#define MUTEX_NAME_LONG -2
+#define MUTEX_MAX_DESC -3
+#define MUTEX_TABLE_FULL -4
+#define MUTEX_CLOSED -5
+#define MUTEX_NO_EXIST -6
+#define MUTEX_LOCK_FAIL -7
+#define MUTEX_UNLOCK_FAIL -8
+
 /* constantes con los tipos de mutex que se pueden definir */
 #define NO_RECURSIVO 0
 #define RECURSIVO 1
