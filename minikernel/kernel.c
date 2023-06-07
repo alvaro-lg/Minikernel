@@ -224,9 +224,6 @@ static void int_reloj(){
 	BCPptr p = lista_dormidos.primero, p_next;
 	unsigned int n_int;
 
-	// TODO
-	printk("%s\n", tabla_mutex[1].nombre);
-
 	printk("[%f] \tTRATANDO INT. DE RELOJ\n", (float) t_ticks/TICK);
 
 	// Incrementamos el numero de ticks actuales del kernel
@@ -908,8 +905,6 @@ int sis_cerrar_mutex(){
 	// Desasociando el descriptor del proceso
 	del_mutex_desc(id);
 
-	// TODO
-	printk("%s\n", tabla_mutex[1].nombre);
 	printk("[%f] \tPROCESO %d CIERRA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
 
 	// Si no hay nadie que tenga abierto el mutex, se elimnina
