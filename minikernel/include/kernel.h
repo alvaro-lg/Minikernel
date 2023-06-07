@@ -23,6 +23,29 @@
 #include "llamsis.h"
 
 /*
+ * Posibles estados de un mutex
+ */
+#define MTX_NO_USADO 0		/* Entrada de tabla de mutex no usada */
+#define MTX_BLOQUEADO 1	
+#define MTX_DESBLOQUEADO 2
+
+#define MTX_DESC_NO_USADO -1	/* Entrada de la lista de descriptores asociados a un proceso no usada */
+
+/* constantes con los tipos de mutex que se pueden definir */
+#define NO_RECURSIVO 0
+#define RECURSIVO 1
+
+/*
+ *
+ * Definici�n del tipo que corresponde con la entrada para la función tiempos_proceso().
+ *
+ */
+struct tiempos_ejec {
+    int usuario;
+    int sistema;
+};
+
+/*
  *
  * Definicion del tipo que corresponde con el BCP.
  * Se va a modificar al incluir la funcionalidad pedida.
@@ -38,20 +61,10 @@ typedef struct BCP_t {
 	BCPptr siguiente;				/* puntero a otro BCP */
 	void *info_mem;					/* descriptor del mapa de memoria */
 	unsigned int t_wake;			/* tiempo (ticks) en que el proceso se despertara */
+	unsigned int t_create;			/* tiempo (ticks) en que el proceso se crea */
+	struct tiempos_ejec tiempos;	/* tiempos (ticks) de usuario y de sistema */
 	int mutex_ids[NUM_MUT_PROC];	/* descriptores e los mutex que posee el proceso */
 } BCP;
-
-/*
- * Definición del tipo correspondiente con el mutex;
- */
-typedef struct mutex_t *mutexptr;
-
-typedef struct mutex_t {
-	int p_id;					/* ident. del proceso que lo esta usando */
-	int estado; 				/* MTX_NO_USADO|MTX_BLOQUEADO|MTX_DESBLOQUEADO */
-	int tipo;					/* NO_RECURSIVO|RECURSIVO */
-	char* nombre;				/* nombre asociado al mutex */
-} mutex;
 
 /*
  *
@@ -65,6 +78,20 @@ typedef struct{
 	BCP *primero;
 	BCP *ultimo;
 } lista_BCPs;
+
+
+/*
+ * Definición del tipo correspondiente con el mutex;
+ */
+typedef struct mutex_t *mutexptr;
+
+typedef struct mutex_t {
+	int p_id;					/* ident. del proceso que lo esta usando */
+	int estado; 				/* MTX_NO_USADO|MTX_BLOQUEADO|MTX_DESBLOQUEADO */
+	int tipo;					/* NO_RECURSIVO|RECURSIVO */
+	char* nombre;				/* nombre asociado al mutex */
+	lista_BCPs lista_bloqueados;/* representa la cola de procesos bloqueados por un mutex */
+} mutex;
 
 /*
  * Variable global que identifica el proceso actual
@@ -95,9 +122,10 @@ lista_BCPs lista_listos= {NULL, NULL};
 lista_BCPs lista_dormidos= {NULL, NULL};
 
 /*
- * Variable global que representa la cola de procesos bloqueados por un mutex
+ * Variable global que representa la cola de procesos dormidos
+ * a la espera de liberar el hueco de un mutex
  */
-lista_BCPs lista_bloqueados= {NULL, NULL};
+lista_BCPs lista_dormidos_mtx= {NULL, NULL};
 
 /*
  *
@@ -111,21 +139,20 @@ typedef struct{
 
 /*
  *
- * Definici�n del tipo que corresponde con la entrada para la función tiempos_proceso().
- *
+ * Variable global empleada para gestionar el número de ticks pasados
+ * en total (para debugging principalmente)
+ * 
  */
-struct tiempos_ejec {
-    int usuario;
-    int sistema;
-};
+unsigned long long int t_ticks = 0;
 
 /*
  *
- * Variables globales empleadas para gestionar el número de ticks pasados
- * en total, en modo usuario y en modo sistema
+ * Variable global empleada para indicarcuando se esta accediendo a un parámetro
+ * y poder gestionar debidamente una futurible excepción de memoria.
  * 
  */
-unsigned long long int t_ticks = 0, t_sys=0, t_usr=0;
+unsigned int acc_param = 0;
+
 
 /*
  * Prototipos de las rutinas que realizan cada llamada al sistema

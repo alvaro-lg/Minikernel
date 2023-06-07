@@ -45,15 +45,6 @@
 #define NIVEL_3 3 /* Int. Reloj */
 
 /*
- * Posibles estados de un mutex
- */
-#define MTX_NO_USADO 0		/* Entrada de tabla de mutex no usada */
-#define MTX_BLOQUEADO 1	
-#define MTX_DESBLOQUEADO 2
-
-#define MTX_DESC_NO_USADO -1	/* Entrada de la lista de descriptores asociados a un proceso no usada */
-
-/*
  *
  *  Definicion de constantes relacionadas con vectores de interrupcion
  *
@@ -87,10 +78,6 @@
 
 /* direcci�n de puerto de E/S del terminal */
 #define DIR_TERMINAL 1
-
-/* constantes con los tipoa s de mutex que se pueden definir */
-#define NO_RECURSIVO 0
-#define RECURSIVO 1
 
 #endif /* _CONST_H */
 
