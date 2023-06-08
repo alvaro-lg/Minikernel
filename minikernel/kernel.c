@@ -109,8 +109,7 @@ static void eliminar_elem(lista_BCPs *lista, BCP * proc){
 static void espera_int(){
 	int nivel;
 
-	// TODO
-	// printk("[%f] \tNO HAY LISTOS. ESPERA INT\n", (float) t_ticks/TICK);
+	printk("[%f] \tNO HAY LISTOS. ESPERA INT\n", (float) t_ticks/TICK);
 
 	/* Baja al m�nimo el nivel de interrupci�n mientras espera */
 	nivel=fijar_nivel_int(NIVEL_1);
@@ -234,8 +233,7 @@ static void int_reloj(){
 	BCPptr p = lista_dormidos.primero, p_next;
 	unsigned int n_int;
 
-	// TODO
-	// printk("[%f] \tTRATANDO INT. DE RELOJ\n", (float) t_ticks/TICK);
+	printk("[%f] \tTRATANDO INT. DE RELOJ\n", (float) t_ticks/TICK);
 
 	// Incrementamos el numero de ticks actuales del kernel
 	t_ticks += 1;
@@ -439,7 +437,7 @@ int sis_dormir() {
 	old_p = p_proc_actual;
 	p_proc_actual= planificador();
 
-	printk("[%f] \tC.CONTEXTO: de %d a %d\n", (float) t_ticks/TICK, old_p->id, p_proc_actual->id);
+	printk("[%f] \tC.CONTEXTO VOLUNTARIO: de %d a %d\n", (float) t_ticks/TICK, old_p->id, p_proc_actual->id);
 	
 	// Cambio de contexto
 	cambio_contexto(&(old_p->contexto_regs), &(p_proc_actual->contexto_regs));
@@ -723,7 +721,7 @@ int sis_crear_mutex(){
 		old_p = p_proc_actual;
 		p_proc_actual= planificador();
 
-		printk("[%f] \tC.CONTEXTO: de %d a %d\n", (float) t_ticks/TICK, old_p->id, p_proc_actual->id);
+		printk("[%f] \tC.CONTEXTO VOLUNTARIO: de %d a %d\n", (float) t_ticks/TICK, old_p->id, p_proc_actual->id);
 
 		for (int i = 0; i < NUM_MUT; i++) printk("%s ", tabla_mutex[i].nombre);
 	
@@ -839,21 +837,23 @@ int sis_lock(){
 			old_p = p_proc_actual;
 			p_proc_actual= planificador();
 
-			printk("[%f] \tC.CONTEXTO: de %d a %d\n", (float) t_ticks/TICK, old_p->id, p_proc_actual->id);
+			printk("[%f] \tC.CONTEXTO VOLUNTARIO: de %d a %d\n", (float) t_ticks/TICK, old_p->id, p_proc_actual->id);
 		
 			// Cambio de contexto
 			cambio_contexto(&(old_p->contexto_regs), &(p_proc_actual->contexto_regs));
 		}
-
-	// Si es recursivo
-	if (tabla_mutex[id].tipo == RECURSIVO)
-		tabla_mutex[id].n_anidamiento++;
 
 	// Se toma el mutex
 	tabla_mutex[id].estado = MTX_BLOQUEADO;
 	tabla_mutex[id].p_id = sis_obtener_id_pr();
 
 	printk("[%f] \tPROCESO %d TOMA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
+	
+	// Si es recursivo
+	if (tabla_mutex[id].tipo == RECURSIVO){
+		tabla_mutex[id].n_anidamiento++;
+		printk("\t\t\tNIVEL DE ANIDAMIENTO DEL MUTEX RECURSIVO: %d\n", (float) t_ticks/TICK, tabla_mutex[id].n_anidamiento);
+	}
 
 	return 0;
 }
@@ -878,16 +878,19 @@ int sis_unlock(){
 		return MUTEX_UNLOCK_FAIL;
 	}
 
+	printk("[%f] \tPROCESO %d LIBERA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
+
 	// Si es recursivo
 	if (tabla_mutex[id].tipo == RECURSIVO) {
 		if (tabla_mutex[id].n_anidamiento > 0)
 			tabla_mutex[id].n_anidamiento--;
-		else
+		else {
 			printk("[%f] \tPROCESO %d INTENTA LIBERAR EL MUTEX %d (%s) DEMASIADAS VECES\n", 
 			(float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
+			return MUTEX_UNLOCK_FAIL;
+		}
+		printk("\t\t\tNIVEL DE ANIDAMIENTO DEL MUTEX RECURSIVO: %d\n", (float) t_ticks/TICK, tabla_mutex[id].n_anidamiento);		
 	}
-
-	printk("[%f] \tPROCESO %d LIBERA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
 
 	// Sólo se libera realmente si el nivel de anidamiento es 0
 	if (tabla_mutex[id].n_anidamiento == 0){
@@ -939,7 +942,7 @@ int sis_cerrar_mutex(){
 		tabla_mutex[id].estado == MTX_BLOQUEADO) {
 		// Reestablecemos el numero de anidamientos si es recursivo
 		if (tabla_mutex[id].tipo == RECURSIVO)
-			tabla_mutex[id].n_anidamiento = 0;
+			tabla_mutex[id].n_anidamiento = 1; // Para que al hacer el unlock sea 0 y se despierte a los demas
 		sis_unlock();
 	}
 
@@ -950,6 +953,7 @@ int sis_cerrar_mutex(){
 
 	// Si no hay nadie que tenga abierto el mutex, se elimnina
 	if (open_mutex_count(id) == 0) {
+		printk("[%f] \tSE ELIMINA EL MUTEX %d (%s), NINGUN PROCESO LO USA\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
 		eliminar_mutex(id);
 	}
 
