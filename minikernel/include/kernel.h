@@ -73,8 +73,6 @@ typedef struct BCP_t {
 	BCPptr siguiente;				/* puntero a otro BCP */
 	void *info_mem;					/* descriptor del mapa de memoria */
 	unsigned int t_wake;			/* tiempo (ticks) en que el proceso se despertara */
-	unsigned int t_create;			/* tiempo (ticks) en que el proceso se crea */
-	struct tiempos_ejec tiempos;	/* tiempos (ticks) de usuario y de sistema */
 	int mutex_ids[NUM_MUT_PROC];	/* descriptores e los mutex que posee el proceso */
 } BCP;
 
@@ -101,7 +99,8 @@ typedef struct mutex_t {
 	int p_id;					/* ident. del proceso que lo esta usando */
 	int estado; 				/* MTX_NO_USADO|MTX_BLOQUEADO|MTX_DESBLOQUEADO */
 	int tipo;					/* NO_RECURSIVO|RECURSIVO */
-	char* nombre;				/* nombre asociado al mutex */
+	int n_anidamiento;			/* Nº de veces que se ha bloqueado un mutex recursivo */
+	char *nombre;				/* nombre asociado al mutex */
 	lista_BCPs lista_bloqueados;/* representa la cola de procesos bloqueados por un mutex */
 } mutex;
 
@@ -152,10 +151,10 @@ typedef struct{
 /*
  *
  * Variable global empleada para gestionar el número de ticks pasados
- * en total (para debugging principalmente)
+ * en total (para debugging principalmente), en modo usuario y sistema
  * 
  */
-unsigned long long int t_ticks = 0;
+unsigned long long int t_ticks = 0, t_usr = 0, t_sys = 0;
 
 /*
  *
