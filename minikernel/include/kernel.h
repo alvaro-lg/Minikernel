@@ -83,7 +83,6 @@ typedef struct BCP_t {
  * procesos bloqueados en sem�foro, etc.).
  *
  */
-
 typedef struct{
 	BCP *primero;
 	BCP *ultimo;
@@ -107,19 +106,16 @@ typedef struct mutex_t {
 /*
  * Variable global que identifica el proceso actual
  */
-
 BCP * p_proc_actual=NULL;
 
 /*
  * Variable global que representa la tabla de procesos
  */
-
 BCP tabla_procs[MAX_PROC];
 
 /*
  * Variable global que representa la tabla de mutex
  */
-
 mutex tabla_mutex[NUM_MUT];
 
 /*
@@ -139,6 +135,12 @@ lista_BCPs lista_dormidos= {NULL, NULL};
 lista_BCPs lista_dormidos_mtx= {NULL, NULL};
 
 /*
+ * Variable global que representa la cola de procesos dormidos
+ * a la espera de leer un caracter en la terminal
+ */
+lista_BCPs lista_dormidos_term= {NULL, NULL};
+
+/*
  *
  * Definici�n del tipo que corresponde con una entrada en la tabla de
  * llamadas al sistema.
@@ -151,10 +153,11 @@ typedef struct{
 /*
  *
  * Variable global empleada para gestionar el número de ticks pasados
- * en total (para debugging principalmente), en modo usuario y sistema
- * 
+ * en total (para debugging principalmente), en modo usuario, sistema, y
+ * los ticks pasados durante la ejecución de una rodaja de tiempo asignada
+ * por el planificador.
  */
-unsigned long long int t_ticks = 0, t_usr = 0, t_sys = 0;
+unsigned long long int t_ticks = 0, t_usr = 0, t_sys = 0, t_proc = 0;
 
 /*
  *
@@ -164,6 +167,16 @@ unsigned long long int t_ticks = 0, t_usr = 0, t_sys = 0;
  */
 unsigned int acc_param = 0;
 
+/*
+ * Variable global que representa el buffer de los caracteres leidos por terminal
+ */
+char char_buff[TAM_BUF_TERM];
+
+/*
+ * Variables globales empledas para gestionar la lectura de los caracteres 
+ * almacenados en el buffer del terminal.
+ */
+unsigned int read_chars = 0, start_char = 0;
 
 /*
  * Prototipos de las rutinas que realizan cada llamada al sistema
@@ -179,6 +192,7 @@ int sis_abrir_mutex();
 int sis_lock();
 int sis_unlock();
 int sis_cerrar_mutex();
+int sis_leer_caracter();
 
 /*
  * Variable global que contiene las rutinas que realizan cada llamada
@@ -193,7 +207,8 @@ servicio tabla_servicios[NSERVICIOS]={	{sis_crear_proceso},
 					{sis_abrir_mutex},
 					{sis_lock},
 					{sis_unlock},
-					{sis_cerrar_mutex}};
+					{sis_cerrar_mutex},
+					{sis_leer_caracter}};
 
 #endif /* _KERNEL_H */
 

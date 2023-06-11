@@ -33,7 +33,6 @@ int llamsis(int llamada, int nargs, ... /* args */);
  *
  */
 
-
 int crear_proceso(char *prog){
 	return llamsis(CREAR_PROCESO, 1, (long)prog);
 }
@@ -66,4 +65,7 @@ int unlock(unsigned int mutexid){
 }
 int cerrar_mutex(unsigned int mutexid){
    return llamsis(CERRAR_MUTEX, 1, mutexid);
+}
+int leer_caracter(){
+   return llamsis(LEER_CARACTER, 0);
 }
