@@ -59,6 +59,15 @@ struct tiempos_ejec {
 
 /*
  *
+ * Estados adicionales de un proceso
+ *
+ */
+#define DORMIDO 4
+#define BLOQUEADO_MTX 5
+#define BLOQUEADO_TERM 6
+
+/*
+ *
  * Definicion del tipo que corresponde con el BCP.
  * Se va a modificar al incluir la funcionalidad pedida.
  *
@@ -66,10 +75,10 @@ struct tiempos_ejec {
 typedef struct BCP_t *BCPptr;
 
 typedef struct BCP_t {
-        int id;						/* ident. del proceso */
-        int estado;					/* TERMINADO|LISTO|EJECUCION|BLOQUEADO */
-        contexto_t contexto_regs;	/* copia de regs. de UCP */
-        void * pila;				/* dir. inicial de la pila */
+    int id;							/* ident. del proceso */
+	int estado;						/* TERMINADO|LISTO|EJECUCION|BLOQUEADO|DORMIDO|BLOQUEADO_MTX|BLOQUEADO_TERM */
+    contexto_t contexto_regs;		/* copia de regs. de UCP */
+	void * pila;					/* dir. inicial de la pila */
 	BCPptr siguiente;				/* puntero a otro BCP */
 	void *info_mem;					/* descriptor del mapa de memoria */
 	unsigned int t_wake;			/* tiempo (ticks) en que el proceso se despertara */
@@ -121,24 +130,24 @@ mutex tabla_mutex[NUM_MUT];
 /*
  * Variable global que representa la cola de procesos listos
  */
-lista_BCPs lista_listos= {NULL, NULL};
+lista_BCPs lista_listos = {NULL, NULL};
 
 /*
  * Variable global que representa la cola de procesos dormidos
  */
-lista_BCPs lista_dormidos= {NULL, NULL};
+lista_BCPs lista_dormidos = {NULL, NULL};
 
 /*
- * Variable global que representa la cola de procesos dormidos
+ * Variable global que representa la cola de procesos bloqueados
  * a la espera de liberar el hueco de un mutex
  */
-lista_BCPs lista_dormidos_mtx= {NULL, NULL};
+lista_BCPs lista_bloqueados_mtx = {NULL, NULL};
 
 /*
- * Variable global que representa la cola de procesos dormidos
+ * Variable global que representa la cola de procesos bloqueados
  * a la espera de leer un caracter en la terminal
  */
-lista_BCPs lista_dormidos_term= {NULL, NULL};
+lista_BCPs lista_bloqueados_term = {NULL, NULL};
 
 /*
  *

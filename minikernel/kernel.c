@@ -328,38 +328,50 @@ static void siguiente_rodaja() {
 	old_p = p_proc_actual;
 	eliminar_primero(&lista_listos);
 
-	if (p_proc_actual->estado == EJECUCION) { 						// Caso de que agote la rodaja
-		p_proc_actual->estado = LISTO;
-		//printk("ejecucion\n"); // TODO
-		insertar_ultimo(&lista_listos, p_proc_actual);
-	} else if (p_proc_actual->estado == BLOQUEADO) {
-		if (p_proc_actual->t_wake > t_ticks){						// Caso bloqueado por dormir
-			//printk("dormir\n"); // TODO
+	// Casuisticas de un proceso
+	switch (p_proc_actual->estado) {
+		case LISTO:
+			printk("[%f] \tPROCESO %d PASA A LA COLA DE LISTOS\n", (float) t_ticks/TICK, sis_obtener_id_pr());
+			insertar_ultimo(&lista_listos, p_proc_actual);
+			break;
+		case DORMIDO:
+			printk("[%f] \tPROCESO %d PASA A LA COLA DE DORMIDOS\n", (float) t_ticks/TICK, sis_obtener_id_pr());
 			insertar_ultimo(&lista_dormidos, p_proc_actual);
-		} else if (!(mutex_is_opened((int)leer_registro(1)) < 0)){ 	// Caso bloqueado por lock
-			//printk("lock %d\n", (int)leer_registro(1)); // TODO
+			break;
+		case BLOQUEADO:
+			printk("[%f] \tPROCESO %d PASA A LA COLA DE DORMIDOS A LA ESPERA DE UN DESCRIPTOR LIBRE\n", 
+				(float) t_ticks/TICK, sis_obtener_id_pr());
+			insertar_ultimo(&lista_bloqueados_mtx, p_proc_actual);
+			break;
+		case BLOQUEADO_MTX:
+			printk("[%f] \tPROCESO %d PASA A LA COLA DE DORMIDOS A LA ESPERA DE LIBERAR EL MUTEX %d (%s)\n", 
+				(float) t_ticks/TICK, sis_obtener_id_pr(), (int)leer_registro(1), tabla_mutex[(int)leer_registro(1)].nombre);
 			insertar_ultimo(&tabla_mutex[(int)leer_registro(1)].lista_bloqueados, p_proc_actual);
-		} else if (get_avail_mutex() < 0) { 												// Caso bloqueado por open
-			//printk("open \n"); // TODO
-			insertar_ultimo(&lista_dormidos_mtx, p_proc_actual);
-		} else {													// Caso bloqueado por terminal
-			//printk("term \n"); // TODO
-			insertar_ultimo(&lista_dormidos_term, p_proc_actual);
-		}
+			break;
+		case BLOQUEADO_TERM:
+			printk("[%f] \tPROCESO %d PASA A LA COLA DE DORMIDOS A LA ESPERA DE LEER UN CARACTER\n", 
+				(float) t_ticks/TICK, sis_obtener_id_pr());
+			insertar_ultimo(&lista_bloqueados_term, p_proc_actual);
+			break;
+		default:
+			break;
 	}
 
 	// Deshinibir interrupciones
 	fijar_nivel_int(n_int);
 
 	// Invocar planificador para obtener nuevo proceso
-	p_proc_actual= planificador();
+	p_proc_actual = planificador();
 	p_proc_actual->estado = EJECUCION;
 
 	// Si es el unico proceso en el sistema, se duerme y se despierta no se deberia hacer c. contexto
 	if (old_p->id != p_proc_actual->id) {
 		if (old_p->estado == TERMINADO)
 			printk("[%f] \tC.CONTEXTO POR FIN:", (float) t_ticks/TICK);
-		else if (old_p->estado == BLOQUEADO)
+		else if (old_p->estado == BLOQUEADO ||
+			old_p->estado == DORMIDO ||
+			old_p->estado == BLOQUEADO_MTX ||
+			old_p->estado == BLOQUEADO_TERM)
 			printk("[%f] \tC.CONTEXTO VOLUNTARIO:", (float) t_ticks/TICK);
 		else
 			printk("[%f] \tC.CONTEXTO INVOLUNTARIO:", (float) t_ticks/TICK);
@@ -469,7 +481,7 @@ static void int_terminal(){
 	fijar_nivel_int(n_int);
 
 	// Despertando proceso bloqueado a la espera de leer un carcter si los hay
-	p = lista_dormidos_term.primero;
+	p = lista_bloqueados_term.primero;
 	if (p != NULL) {
 		// Cambiamos su estado
 		p->estado = LISTO;
@@ -478,7 +490,7 @@ static void int_terminal(){
 		n_int = fijar_nivel_int(NIVEL_3);
 
 		// Modificar listas de BCPs
-		eliminar_elem(&lista_dormidos_term,p);
+		eliminar_elem(&lista_bloqueados_term,p);
 		insertar_ultimo(&lista_listos,p);
 
 		// Deshinibir interrupciones
@@ -497,10 +509,6 @@ static void int_reloj(){
 	BCPptr p = lista_dormidos.primero, p_next;
 	unsigned int n_int;
 
-	// TODO
-	// printk("[%f] \tTRATANDO INT. DE RELOJ (TIEMPO RESTANTE DE RODAJA: %d)\n", 
-	//  	(float) t_ticks/TICK, TICKS_POR_RODAJA - t_proc);
-
 	// Incrementamos el numero de ticks actuales del kernel
 	t_ticks++;
 
@@ -513,6 +521,9 @@ static void int_reloj(){
 		// Si el proceso no actua como el nulo, esta consumiendo su rodaja
 		t_proc++;
 	}
+
+	printk("[%f] \tTRATANDO INT. DE RELOJ (TIEMPO RESTANTE DE RODAJA: %d)\n", 
+	 	(float) t_ticks/TICK, TICKS_POR_RODAJA - t_proc);
 
 	// Tratando procesos esperando un plazo
 	while (p != NULL) {
@@ -543,8 +554,10 @@ static void int_reloj(){
 	}
 
 	// Pasado el suficiente tiempo, el proceso agota su rodaja
-	if (t_proc >= TICKS_POR_RODAJA)
+	if (t_proc >= TICKS_POR_RODAJA) {
+		p_proc_actual->estado = LISTO;
 		activar_int_SW();
+	}
 }
 
 /*
@@ -699,7 +712,7 @@ int sis_dormir() {
 	segundos=(unsigned int)leer_registro(1);
 
 	// Bloquear proceso
-	p_proc_actual->estado=BLOQUEADO;
+	p_proc_actual->estado=DORMIDO;
 	p_proc_actual->t_wake=t_ticks + segundos*TICK;
 
 	// Siguiente proceso
@@ -756,7 +769,7 @@ void eliminar_mutex(int id) {
 	tabla_mutex[id].estado = MTX_NO_USADO;
 
 	// Despertando a uno de los porcesos esperando a liberar un hueco
-	p = lista_dormidos_mtx.primero;
+	p = lista_bloqueados_mtx.primero;
 	if (p != NULL) {
 		p->estado = LISTO;
 
@@ -764,7 +777,7 @@ void eliminar_mutex(int id) {
 		n_int = fijar_nivel_int(NIVEL_3);
 
 		// Modificar listas de BCPs
-		eliminar_elem(&lista_dormidos_mtx,p);
+		eliminar_elem(&lista_bloqueados_mtx,p);
 		insertar_ultimo(&lista_listos,p);
 
 		// Deshinibir interrupciones
@@ -901,23 +914,27 @@ int sis_lock(){
 	}
 
 	// Caso de que el proceso no tenga abierto el mutex
-	if (mutex_is_opened(id) < 0){
+	if (mutex_is_opened(id) < 0) {
 		printk("[%f] \tPROCESO %d NO TIENE EL MUTEX %d ABIERTO\n", (float) t_ticks/TICK, p_proc_actual->id, id);
 		return MUTEX_CLOSED;
 	}
 
-	// Caso de que el mutex sea no recursivo y lo quiera bloquear el dueño
-	if (tabla_mutex[id].tipo == NO_RECURSIVO && tabla_mutex[id].p_id == sis_obtener_id_pr()) {
-		printk("[%f] \tPROCESO %d INTENTA TOMAR EL MUTEX NO RECURSIVO %d (%s)\n", 
-			(float) t_ticks/TICK, sis_obtener_id_pr(), id, tabla_mutex[id].nombre);
-		return MUTEX_LOCK_FAIL;
-	}
-
-	// No se bloquea si es recursivo y lo quiere bloquear el dueño, si no se intenta tomar
-	if (!(tabla_mutex[id].tipo == RECURSIVO && tabla_mutex[id].p_id == sis_obtener_id_pr()))
+	// Caso de que el dueño del mutex lo quiera volver a tomar
+	if (tabla_mutex[id].p_id == sis_obtener_id_pr() && tabla_mutex[id].estado == MTX_BLOQUEADO) {
+		if (tabla_mutex[id].tipo == RECURSIVO) { 	// Si es recursivo -> se incrementa el nivel de anidamiento
+			tabla_mutex[id].n_anidamiento++;
+			printk("[%f] \tPROCESO %d VUELVE A TOMAR EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
+			printk("\t\tNIVEL DE ANIDAMIENTO DEL MUTEX RECURSIVO: %d\n", (float) t_ticks/TICK, tabla_mutex[id].n_anidamiento);
+		} else { 									// Si no es recursivo -> se devuelve un error
+			printk("[%f] \tPROCESO %d INTENTA TOMAR EL MUTEX NO RECURSIVO %d (%s)\n", 
+				(float) t_ticks/TICK, sis_obtener_id_pr(), id, tabla_mutex[id].nombre);
+			return MUTEX_LOCK_FAIL;
+		}
+	// Caso de que quien lo quiere tomar no sea el dueño
+	} else {
 		while (tabla_mutex[id].estado == MTX_BLOQUEADO){
-			// Bloquar el proceso
-			p_proc_actual->estado=BLOQUEADO;
+			// Bloquear el proceso
+			p_proc_actual->estado=BLOQUEADO_MTX;
 
 			printk("[%f] \tPROCESO %d ESPERA A LIBERAR MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
 
@@ -925,16 +942,15 @@ int sis_lock(){
 			siguiente_rodaja();
 		}
 
-	// Se toma el mutex
-	tabla_mutex[id].estado = MTX_BLOQUEADO;
-	tabla_mutex[id].p_id = sis_obtener_id_pr();
+		// Se toma el mutex
+		tabla_mutex[id].estado = MTX_BLOQUEADO;
+		tabla_mutex[id].p_id = sis_obtener_id_pr();
 
-	printk("[%f] \tPROCESO %d TOMA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
-	
-	// Si es recursivo
-	if (tabla_mutex[id].tipo == RECURSIVO){
-		tabla_mutex[id].n_anidamiento++;
-		printk("\t\tNIVEL DE ANIDAMIENTO DEL MUTEX RECURSIVO: %d\n", (float) t_ticks/TICK, tabla_mutex[id].n_anidamiento);
+		printk("[%f] \tPROCESO %d TOMA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
+		if (tabla_mutex[id].tipo == RECURSIVO) {
+			tabla_mutex[id].n_anidamiento++;
+			printk("\t\tNIVEL DE ANIDAMIENTO DEL MUTEX RECURSIVO: %d\n", (float) t_ticks/TICK, tabla_mutex[id].n_anidamiento);
+		}
 	}
 
 	return 0;
@@ -953,28 +969,28 @@ int sis_unlock(){
 	// Lectura de argumentos
 	id=(int)leer_registro(1);
 
+	// Caso de que el mutex no se haya creado
+	if (tabla_mutex[id].estado == MTX_NO_USADO) {
+		printk("[%f] \tMUTEX %d NO CREADO\n", (float) t_ticks/TICK, id);
+		return MUTEX_NO_EXIST;
+	}
+
 	// Comprobar que es dueño del mutex
 	if (sis_obtener_id_pr() != tabla_mutex[id].p_id) {
 		printk("[%f] \tPROCESO %d INTENTA LIBERAR EL MUTEX %d (%s) PERO NO LO POSEE (LO POSEE %d)\n", 
 			(float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre, tabla_mutex[id].p_id);
-		return 0; // Se ignora
+		return MUTEX_UNLOCK_FAIL;
 	}
 
 	printk("[%f] \tPROCESO %d LIBERA EL MUTEX %d (%s)\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
 
-	// Si es recursivo
-	if (tabla_mutex[id].tipo == RECURSIVO) {
-		if (tabla_mutex[id].n_anidamiento > 0)
-			tabla_mutex[id].n_anidamiento--;
-		else {
-			printk("[%f] \tPROCESO %d INTENTA LIBERAR EL MUTEX %d (%s) DEMASIADAS VECES\n", 
-			(float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
-			return MUTEX_UNLOCK_FAIL;
-		}
-		printk("\t\tNIVEL DE ANIDAMIENTO DEL MUTEX RECURSIVO: %d\n", (float) t_ticks/TICK, tabla_mutex[id].n_anidamiento);		
+	// Caso de que sea recursivo
+	if (tabla_mutex[id].tipo == RECURSIVO && tabla_mutex[id].n_anidamiento > 0) {
+		tabla_mutex[id].n_anidamiento--;
+		printk("\t\tNIVEL DE ANIDAMIENTO DEL MUTEX RECURSIVO: %d\n", (float) t_ticks/TICK, tabla_mutex[id].n_anidamiento);
 	}
 
-	// Sólo se libera realmente si el nivel de anidamiento es 0
+	// Sólo se libera realmente si el nivel de anidamiento es 0 o no es recursivo
 	if (tabla_mutex[id].tipo == NO_RECURSIVO || 
 		(tabla_mutex[id].tipo == RECURSIVO && tabla_mutex[id].n_anidamiento == 0)){
 		// Se libera el mutex
@@ -982,6 +998,7 @@ int sis_unlock(){
 
 		// Despertando proceso bloqueado a la espera de liberar el mutex si los hay
 		p = tabla_mutex[id].lista_bloqueados.primero;
+		
 		if (p != NULL) {
 			// Cambiamos su estado
 			p->estado = LISTO;
@@ -997,7 +1014,7 @@ int sis_unlock(){
 			fijar_nivel_int(n_int);
 		}
 	}
-
+	
 	return 0;
 }
 
@@ -1027,7 +1044,7 @@ int sis_cerrar_mutex(){
 		tabla_mutex[id].estado == MTX_BLOQUEADO) {
 		// Reestablecemos el numero de anidamientos si es recursivo
 		if (tabla_mutex[id].tipo == RECURSIVO)
-			tabla_mutex[id].n_anidamiento = 1; // Para que al hacer el unlock sea 0 y se despierte a los demas
+			tabla_mutex[id].n_anidamiento = 1; // Lo ponemos a 1 para que unlock haga el decremento y el print
 		sis_unlock();
 	}
 
@@ -1060,7 +1077,7 @@ int sis_leer_caracter() {
 	// Caso de  que no queden caracteres en el buffer
 	while (eval >= 0) {
 		// Bloquar el proceso
-		p_proc_actual->estado=BLOQUEADO;
+		p_proc_actual->estado=BLOQUEADO_TERM;
 
 		printk("[%f] \tPROCESO %d ESPERA A LEER UN CARACTER\n", (float) t_ticks/TICK, p_proc_actual->id);
 

@@ -10,7 +10,6 @@
 /*
  * Programa de usuario que "gasta CPU".
  */
-
 #include "servicios.h"
 
 #define TOT_ITER 200000000	/* ponga las que considere oportuno */
