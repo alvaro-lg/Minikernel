@@ -1,0 +1,205 @@
+
+Sistemas Operativos Avanzados
+
+Práctica: "Minikernel"
+
+Autor: Álvaro López García.
+Fecha: 15 de Junio de 2023.
+
+================================================================================================
+
+	A continuación se detallará, para cada una de las secciones desarrolladas en la práctica, diferentes detalles y justificaciones acerca de la solución llevada a cabo en cada caso.
+
+1. Inclusión de una llamada simple
+
+	Se ha incluido el nuevo servicio obtener_id_pr. Este devuelve el valor del campo id de la variable global p_proc_actual, que almacena la información a suministrar por el servicio.
+
+2. Llamada que bloquea al proceso un plazo de tiempo
+
+	Para este apartado se ha desarrollado el servicio dormir que a su vez invoca la llamada al sistema sis_dormir. Esta rutina se encarga de leer el valor pasado como argumento de entrada por el usuario, marcar el estado del proceso en ejecución como DORMIDO (constante definida para denotar este estado de un proceso) almacenar en el campo t_wake que se ha incluido en la estructura BCP e invoca la rutina auxiliar de planificación siguiente_rodaja (que explicaremos más adelante).
+
+	En el nuevo campo del BCP t_wake (unsigned int) se almacena el valor (en ticks) en que se deberá despertar al proceso dormido. La rutina siguiente_rodaja se encargara de (entre otras cosas) eliminar al proceso de lista_listos e incluirla en lista_dormidos.
+
+	Tras realizar todo esto la llamada sis_dormir que implementa el servicio precisado terminará y, conforme pasen los ticks, será la rutina de atención a la interrupción del reloj quien se encargue de incrementar una variable llamada t_ticks que se inicializa a 0 en el arranque y nos sirve como contador del número de interrupciones que han ocurrido desde el arranque del kernel. Además de esto, la rutina de atención a la interrupción del reloj comprobará qué procesos de lista_dormidos tienen un valor de t_wake inferior o igual a t_ticks, y los despertará cuando proceda.
+
+3. Contabilidad del uso del procesador por parte de un proceso
+
+	Para la resolución de este apartado se ha definido el servicio tiempos_proceso, encargado de devolver en número de interrupciones de reloj que se han producido desde el arranque. Dada nuestra implementación esto es trivial, pues dicho valor se halla en la variable global t_ticks cuyo comportamiento ya se ha descrito.
+
+	Sin embargo este servicio ha de cumplir una funcionalidad más, y esta es devolver el número de veces que la interrupción de reloj venía de estarse ejecutando en modo usuario y en modo sistema en caso de recibir un puntero correcto a la estructura en la que se van a devolver estos valores. Para ello se comprueba que dicho puntero no sea nulo y que una nueva variable global llamada acc_param sea 0. Esta nueva variable global se emplea para indicar que el kernel está accediendo a una dirección de memoria facilitada por el usuario, de este modo, en caso de producirse una excepción en dicho acceso podemos diferir si se ha producido por una mala dirección del usuario, en cuyo caso esta implica matar el proceso en ejecución; o si por el contrario este mal acceso ha sido realizado por el propio kernel, en cuyo caso implicará también una situación de pánico.
+
+	Para el cálculo de los tiempos de usuario y de sistema se han creado unas variables globales llamadas t_usr y t_sys análogas a la variable t_ticks descrita anteriormente y que se incrementan en la rutina de atención a la interrupción del reloj cuando el proceso en ejecución no hace las veces de proceso nulo (cuando no hay ningún proceso en lista_listos) y se cumple que viene_de_modo_usuario() es True o False respectivamente.
+
+4. Mutex
+
+	Esta sección es quizás la más ambiciosa, por lo que se va a comenzar por enumerar las variables creadas para luego desglosar cada funcionalidad a implementar. Las variables, constantes y estructuras creadas se muestran a continuación:
+
+	- Constantes que representan los posibles estados de un mutex:
+		- MTX_NO_USADO = 0
+		- MTX_BLOQUEADO = 1
+		- MTC_DESBLOQUEADO = 2
+	
+	- Constante para indicar un hueco libre en la lista de descriptores asociados a los mutex que tiene abiertos un proceso: MTX_DESC_NO_USADO = -1
+
+	- Constantes para indicar los diferentes tipos de errores devueltos por las diferentes llamadas al sistema asociadas a la operación con mutex:
+		- MUTEX_NAME_EXIST = -1
+		- MUTEX_NAME_LONG = -2
+		- MUTEX_MAX_DESC = -3
+		- MUTEX_TABLE_FULL = -4
+		- MUTEX_CLOSED = -5
+		- MUTEX_NO_EXIST = -6
+		- MUTEX_LOCK_FAIL = -7
+		- MUTEX_UNLOCK_FAIL = -8
+
+	- Constantes para definir el tipo de mutex del que se trata:
+		- NO_RECURSIVO = 0
+		- RECURSIVO = 1
+	
+	- Estado adicional para indicar que un proceso se encuentra bloqueado por un mutex:
+		- BLOQUEADO_MTX 5
+
+	- Puntero a la estructura que almacena los datos correspondientes a un mutex:
+		- typedef struct mutex_t *mutexptr
+	
+	- Estructura que almacena los datos correspondientes a un mutex: typedef struct mutex_t mutex. Campos que alberga esta estructura:
+		- int p_id: Identificador del proceso que lo esta usando.
+		- int estado: MTX_NO_USADO|MTX_BLOQUEADO|MTX_DESBLOQUEADO.
+		- int tipo: NO_RECURSIVO|RECURSIVO.
+		- int n_anidamiento: Número de veces que se ha bloqueado un mutex recursivo.
+		- char *nombre: Nombre asociado al mutex.
+		- lista_BCPs lista_bloqueados: Representa la cola de procesos bloqueados por un mutex.
+
+	- Variable global que representa la tabla de mutex: mutex tabla_mutex[NUM_MUT].
+
+	- Variable global que representa la cola de procesos bloqueados a la espera de liberar el hueco de un mutex: lista_BCPs lista_bloqueados_mtx = {NULL, NULL}.
+
+4.1 crear_mutex
+
+	El pseudo-código de la rutina sis_crear_mutex que implementa este servicio se muestra a continuación:
+		sis_crear_mutex:
+			Si el proceso no tiene descriptores libres:
+				Error
+			Fin si
+			Si el nombre es demasiado largo:
+				Error
+			Fin si
+			Si existe otro con este nombre:
+				Error
+			Fin si
+			Mientras no haya mutex libres en el sistema:
+				Bloquear proceso
+				Si existe otro con este nombre:
+					Error
+				Fin si
+			Fin mientras
+			Obtener descriptor
+			Inicializar mutex
+			Abrir mutex
+			Devolver descriptor
+		Fin
+
+4.2 abrir_mutex
+
+	El pseudo-código de la rutina sis_abrir_mutex que implementa este servicio se muestra a continuación:
+		sis_abrir_mutex:
+			Si el proceso no tiene descriptores libres:
+				Error
+			Fin si
+			Si el nombre del mutex no existe:
+				Error
+			Fin si
+			Obtener descriptor asociado al mutex
+			Añadir descriptor a la lista de descriptores asociados al proceso
+			Devolver descriptor
+		Fin
+
+4.3 lock
+
+	El pseudo-código de la rutina sis_lock que implementa este servicio se muestra a continuación:
+		sis_lock:
+			Si el mutex no existe:
+				Error
+			Fin si
+			Si el proceso no tiene abierto el mutex:
+				Error
+			Fin si
+			Si el proceso posee el mutex y está tomado:
+				Si el mutex es recursivo:
+					Incrementa el nivel de anidamiento
+				Si no
+					Error
+				Fin si
+			Si no:
+				Mientras esté tomado:
+					Bloquear proceso
+				Fin mientras
+				Toma el mutex
+				Si es recursivo
+					Incrementa el nivel de anidamiento
+				Fin si
+			Fin si
+			Devuelve 0
+		Fin
+
+4.4 unlock
+
+	El pseudo-código de la rutina sis_unlock que implementa este servicio se muestra a continuación:
+		sis_unlock:
+			Si el mutex no existe:
+				Error
+			Fin si
+			Si el proceso no es el dueño del mutex:
+				Error
+			Fin si
+			Si el mutex es recursivo y su nivel de anidamiento mayor que 0:
+				Disminuye el nivel de anidamiento
+			Fin si
+			Si el mutex no es recursivo o es recursivo y su nivel de anidamiento es 0:
+				Libera al mutex
+				Despierta al primer proceso de su lista de bloqueados
+			Fin si
+			Devuelve 0
+		Fin
+4.5 cerrar_mutex
+
+	El pseudo-código de la rutina sis_cerrar_mutex que implementa este servicio se muestra a continuación:
+		sis_cerrar_mutex:
+			Si el proceso no tiene el mutex abierto:
+				Error
+			Si no:
+				Cierra el mutex
+			Fin si
+			Si el dueño del mutex es quien lo cierra:
+				Desbloquea el mutex
+			Fin si
+			Si no hay más procesos que tengan el mutex abierto:
+				Elimina el mutex
+			Fin si
+			Devuelve 0
+		fin
+
+4.6 Otras funciones auxiliares
+
+	A continuación se listan las funciones auxiliares desarrolladas y que son empleadas por estas llamadas al sistema para realizar las operaciones relacionadas con los mutex junto con una breve descripción:s
+
+	- eliminar_mutex: Función que elimina un determinado mutex cuyo id se pasa como parámetro.
+	- num_mutex_desc: Devuelve el numero de descriptores que posee un proceso.
+	- add_mutex_desc: Añade un descriptor a la tabla de descriptores de mutex asociados al proceso. Devuelve 0 si todo va bien, MUTEX_MAX_DESC en caso de que no haya hueco.
+	- del_mutex_desc: Elimina un descriptor a la tabla de descriptores de mutex asociados al proceso. Devuelve 0 si todo va bien, MUTEX_CLOSED en caso de que no lo tenga asociado.
+	- open_mutex_count: Devuelve el número de procesos que tienen abierto un determinado mutex.
+	- mutex_valid_name: Devuelve 0 si el nombre es válido, MUTEX_NAME_EXIST si ya existe un con ese nombre, y MUTEX_NAME_LONG si el nombre es demasiado largo.
+	- mutex_search_name: Busca un mutex por su nombre y devuelve su id si existe, MUTEX_NAME_NO_EXIST si no.
+	- get_avail_mutex: Función que devuelve el índice de un hueco en la tabla de mutex, MUTEX_TABLE_FULL si no quedan.
+	- mutex_is_opened: Devuelve 0 si el proceso que la invoca tiene abierto el mutex cuyo id se pasa como argumento, MUTEX_CLOSED si no.
+
+4.7 Comentarios adicionales
+
+	Por último, hay que mencionar que ha habido que añadir una sección de código a la función liberar_proceso para cerrar todos los mutex que tenga abiertos un proceso.
+
+5. Round-Robin
+
+TODO
+
+6. Manejo básico de la entrada por teclado
+
+TODO
