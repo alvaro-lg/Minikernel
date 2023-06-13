@@ -1,9 +1,10 @@
 /*
  *  kernel/kernel.c
  *
- *  Minikernel. Versi�n 1.0
+ *  Minikernel. Versión 1.0
  *
- *  Fernando P�rez Costoya
+ *  Fernando Pérez Costoya y
+ *  Álvaro López García
  *
  */
 
@@ -277,6 +278,33 @@ static void eliminar_elem(lista_BCPs *lista, BCP * proc){
 }
 
 /*
+ * Despierta al primer BCP almacenado en una lista cambiando su estado,
+ * pasandolo a la lista de listos y eliminandolo de la lista actual.
+ */
+static void despierta_primero(lista_BCPs *lista){
+
+	// Variables
+	BCPptr p;
+	int n_int;
+
+	p = lista->primero;
+	if (p != NULL) {
+		// Cambiamos su estado
+		p->estado = LISTO;
+
+		// Inhibir interrupciones
+		n_int = fijar_nivel_int(NIVEL_3);
+
+		// Modificar listas de BCPs
+		eliminar_elem(lista,p);
+		insertar_ultimo(&lista_listos,p);
+
+		// Deshinibir interrupciones
+		fijar_nivel_int(n_int);
+	}
+}
+
+/*
  *
  * Funciones relacionadas con la planificacion
  *	espera_int planificador
@@ -288,8 +316,7 @@ static void eliminar_elem(lista_BCPs *lista, BCP * proc){
 static void espera_int(){
 	int nivel;
 
-	// TODO
-	// printk("[%f] \tNO HAY LISTOS. ESPERA INT\n", (float) t_ticks/TICK);
+	printk("[%f] \tNO HAY LISTOS. ESPERA INT\n", (float) t_ticks/TICK);
 
 	/* Baja al m�nimo el nivel de interrupci�n mientras espera */
 	nivel=fijar_nivel_int(NIVEL_1);
@@ -378,7 +405,10 @@ static void siguiente_rodaja() {
 		printk("%d a %d\n", old_p->id, p_proc_actual->id);
 
 		// Cambio de contexto
-		cambio_contexto(&(old_p->contexto_regs), &(p_proc_actual->contexto_regs));
+		if (old_p->estado == TERMINADO)
+			cambio_contexto(NULL, &(p_proc_actual->contexto_regs));
+		else
+			cambio_contexto(&(old_p->contexto_regs), &(p_proc_actual->contexto_regs));
 	}
 }
 
@@ -459,7 +489,6 @@ static void exc_mem(){
 static void int_terminal(){
 
 	// Variables
-	BCPptr p;
 	int n_int;
 	char car;
 
@@ -481,21 +510,7 @@ static void int_terminal(){
 	fijar_nivel_int(n_int);
 
 	// Despertando proceso bloqueado a la espera de leer un carcter si los hay
-	p = lista_bloqueados_term.primero;
-	if (p != NULL) {
-		// Cambiamos su estado
-		p->estado = LISTO;
-
-		// Inhibir interrupciones
-		n_int = fijar_nivel_int(NIVEL_3);
-
-		// Modificar listas de BCPs
-		eliminar_elem(&lista_bloqueados_term,p);
-		insertar_ultimo(&lista_listos,p);
-
-		// Deshinibir interrupciones
-		fijar_nivel_int(n_int);
-	}
+	despierta_primero(&lista_bloqueados_term);
 
     return;
 }
@@ -589,8 +604,11 @@ static void tratar_llamsis(){
  */
 static void int_sw(){
 
-	printk("[%f] \tTRATANDO INT. SW\n", (float) t_ticks/TICK);
-	siguiente_rodaja();
+	// Comprobar que el proceso en ejecucion es el que hay que expulsar
+	if (p_proc_actual->estado == LISTO) {
+		printk("[%f] \tTRATANDO INT. SW\n", (float) t_ticks/TICK);
+		siguiente_rodaja();
+	}
 
 	return;
 }
@@ -761,28 +779,11 @@ int sis_tiempos_proceso() {
  */
 void eliminar_mutex(int id) {
 
-	// Variables
-	BCPptr p;
-	int n_int;
-
 	// Marcando el hueco como libre
 	tabla_mutex[id].estado = MTX_NO_USADO;
 
 	// Despertando a uno de los porcesos esperando a liberar un hueco
-	p = lista_bloqueados_mtx.primero;
-	if (p != NULL) {
-		p->estado = LISTO;
-
-		// Inibir interrupciones
-		n_int = fijar_nivel_int(NIVEL_3);
-
-		// Modificar listas de BCPs
-		eliminar_elem(&lista_bloqueados_mtx,p);
-		insertar_ultimo(&lista_listos,p);
-
-		// Deshinibir interrupciones
-		fijar_nivel_int(n_int);
-	}
+	despierta_primero(&lista_bloqueados_mtx);
 }
 
 /*
@@ -963,8 +964,7 @@ int sis_lock(){
 int sis_unlock(){
 	
 	// Variables
-	int id, n_int;
-	BCPptr p;
+	int id;
 
 	// Lectura de argumentos
 	id=(int)leer_registro(1);
@@ -997,22 +997,7 @@ int sis_unlock(){
 		tabla_mutex[id].estado = MTX_DESBLOQUEADO;
 
 		// Despertando proceso bloqueado a la espera de liberar el mutex si los hay
-		p = tabla_mutex[id].lista_bloqueados.primero;
-		
-		if (p != NULL) {
-			// Cambiamos su estado
-			p->estado = LISTO;
-
-			// Inhibir interrupciones
-			n_int = fijar_nivel_int(NIVEL_3);
-
-			// Modificar listas de BCPs
-			eliminar_elem(&tabla_mutex[id].lista_bloqueados,p);
-			insertar_ultimo(&lista_listos,p);
-
-			// Deshinibir interrupciones
-			fijar_nivel_int(n_int);
-		}
+		despierta_primero(&tabla_mutex[id].lista_bloqueados);
 	}
 	
 	return 0;
@@ -1025,14 +1010,13 @@ int sis_unlock(){
 int sis_cerrar_mutex(){
 	
 	// Variables
-	int id, ret;
+	int id;
 
 	// Lectura de argumentos
 	id=(int)leer_registro(1);
 
 	// Comprobando que el proceso tiene el mutex abierto
-	ret = del_mutex_desc(id);
-	if (ret == MUTEX_CLOSED) {
+	if (del_mutex_desc(id) == MUTEX_CLOSED) {
 		printk("[%f] \tPROCESO %d NO TIENE EL MUTEX %d (%s) ABIERTO\n", (float) t_ticks/TICK, p_proc_actual->id, id, tabla_mutex[id].nombre);
 		return MUTEX_CLOSED;
 	}
@@ -1047,9 +1031,6 @@ int sis_cerrar_mutex(){
 			tabla_mutex[id].n_anidamiento = 1; // Lo ponemos a 1 para que unlock haga el decremento y el print
 		sis_unlock();
 	}
-
-	// Desasociando el descriptor del proceso
-	del_mutex_desc(id);
 
 	// Si no hay nadie que tenga abierto el mutex, se elimnina
 	if (open_mutex_count(id) == 0) {
@@ -1115,7 +1096,7 @@ int main(){
 	instal_man_int(LLAM_SIS, tratar_llamsis); 
 	instal_man_int(INT_SW, int_sw); 
 
-	iniciar_cont_int();		/* inicia cont. interr. */
+	iniciar_cont_int();			/* inicia cont. interr. */
 	iniciar_cont_reloj(TICK);	/* fija frecuencia del reloj */
 	iniciar_cont_teclado();		/* inici cont. teclado */
 

@@ -156,7 +156,9 @@ Fecha: 15 de Junio de 2023.
 			Fin si
 			Si el mutex no es recursivo o es recursivo y su nivel de anidamiento es 0:
 				Libera al mutex
-				Despierta al primer proceso de su lista de bloqueados
+				Si hay procesos esperando para tomarlo:
+					Despierta al primer proceso de su lista de bloqueados
+				Fin si
 			Fin si
 			Devuelve 0
 		Fin
