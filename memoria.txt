@@ -198,8 +198,20 @@ Fecha: 15 de Junio de 2023.
 
 5. Round-Robin
 
-TODO
+	Para la implementación de la planificación Round-Robin, se ha definido una nueva variable global t_proc (unsigned long long int) que se incrementa en cada interrupción de reloj siempre y cuando el proceso en ejecución no esté actuando como el proceso nulo. Cuando esta variable supera o iguala el valor de la constante TICKS_POR_RODAJA, se marca el estado del proceso actual como listo y se activa la interrupción software que se encarga de expulsar este proceso que habrá agotado su tiempo de la rodaja.
+
+	La rutina de atención a la interrupción software comprobará que el proceso en ejecución es aquel que se quiere expulsar (comprobando que su estado sea LISTO) y, si es así, invocará la rutina auxiliar de planificación siguiente_rodaja, ya mencionada.
+
+	Esta rutina auxiliar se encargará de, a partir del estado del proceso en ejecución, reiniciar el contador t_proc, manipular las correspondientes listas de BCPs y realizar el correspondiente cambio de contexto al siguiente proceso indicando en la terminal si este se produce por fin, voluntario o involuntario. La rutina siguiente_rodaja será la rutina a invocar por un proceso cuando este se bloquee/duerma/termine ya que a partir del estado de dicho proceso, deducirá que hay que hacer un cambio de contexto voluntario.
 
 6. Manejo básico de la entrada por teclado
 
-TODO
+	Para la solución de esta última funcionalidad se han definido una serie de nuevas variables:
+	
+	- lista_BCPs lista_bloqueados_term = {NULL, NULL}: Variable global que representa la cola de procesos bloqueados a la espera de leer un caracter en la terminal.
+	- char char_buff[TAM_BUF_TERM]: Variable global que representa el buffer de los caracteres leídos por terminal.
+	- unsigned int read_chars = 0, start_char = 0: Variables globales empledas para gestionar la lectura de los caracteres almacenados en el buffer del terminal.
+
+	La llamada al sistema que implementa el servicio sis_leer_caracter comprueba que haya caracteres disponibles en el buffer char_buff, devolviendo el primero de ellos e incrementando la variable start_char si hay o duerme al proceso en caso contrario. La rutina de atención a la interrupción del terminal se encargará de almacenar en el buffer el carácter leído, incrementar la variable read_chars y despertando al primero de los procesos en espera a leer un carácter si lo hubiera.
+
+	La forma de operar en este funcionalidad sobre el buffer char_buff es de acuerdo a la estructura de un array circular, incrementando hasta el infinito las variables read_chars y start_char debidamente, pero evaluándolas de acuerdo al módulo con respecto de la variable TAM_BUF_TERN cuando se accede a los elementos del buffer.
